@@ -1,23 +1,40 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AlFaravi Chat App</title>
+    <title>AlFaravi - Private Chat</title>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .login-card { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; width: 350px; }
-        .google-btn { background: #4285F4; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; width: 100%; transition: 0.3s; }
-        .google-btn:hover { background: #357ae8; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; }
+        #login-ui, #contact-list-ui { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; width: 350px; }
+        .google-btn { background: #4285F4; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; width: 100%; margin-top: 20px; }
+        
+        /* কন্টাক্ট লিস্ট ডিজাইন */
+        #contact-list-ui { display: none; padding: 20px; justify-content: flex-start; }
+        .user-item { background: white; padding: 15px; margin: 10px; border-radius: 10px; width: 90%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .call-btn { background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
+        
         #chat-interface { display: none; width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
 
-    <div id="login-ui" class="login-card">
-        <h2>Welcome to AlFaravi</h2>
-        <p>Please login to continue</p>
-        <button class="google-btn" onclick="loginWithGoogle()">Login with Google</button>
+    <div id="login-ui">
+        <div class="card">
+            <h2>AlFaravi Chat</h2>
+            <p>Connect with your friends privately</p>
+            <button class="google-btn" onclick="loginWithGoogle()">Login with Google</button>
+        </div>
+    </div>
+
+    <div id="contact-list-ui">
+        <h2>Active Contacts</h2>
+        <div id="users-container" style="width: 100%; display: flex; flex-direction: column; align-items: center;">
+            </div>
     </div>
 
     <div id="chat-interface"></div>
@@ -25,7 +42,7 @@
     <script src="https://unpkg.com/@zegocloud/zego-uikit-prebuilt/zego-uikit-prebuilt.js"></script>
     
     <script>
-        // ১. আপনার Firebase Config এখানে দিন
+        // আপনার Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyDNPPk6UXdC-zqXCFPk8qGm92WFs9DFWC0",
             authDomain: "alfaravichatapp.firebaseapp.com",
@@ -35,23 +52,53 @@
             appId: "1:26540560340:web:44bb8b85590d36524c9041"
         };
         firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
 
-        // ২. Google লগইন ফাংশন
+        // গুগল লগইন
         function loginWithGoogle() {
             const provider = new firebase.auth.GoogleAuthProvider();
             firebase.auth().signInWithPopup(provider).then((result) => {
                 const user = result.user;
+                
+                // Firestore এ ইউজার সেভ করা
+                db.collection("users").doc(user.uid).set({
+                    name: user.displayName,
+                    email: user.email,
+                    uid: user.uid
+                });
+
                 document.getElementById('login-ui').style.display = 'none';
-                document.getElementById('chat-interface').style.display = 'block';
-                startZego(user.displayName, user.uid);
-            }).catch((error) => console.log(error));
+                loadContacts();
+            }).catch((error) => alert(error.message));
         }
 
-        // ৩. ZegoCloud সেটআপ
-        function startZego(userName, userID) {
+        // কন্টাক্ট লিস্ট লোড করা
+        function loadContacts() {
+            document.getElementById('contact-list-ui').style.display = 'flex';
+            db.collection("users").onSnapshot((snapshot) => {
+                const container = document.getElementById('users-container');
+                container.innerHTML = "";
+                snapshot.forEach((doc) => {
+                    const userData = doc.data();
+                    const userDiv = document.createElement('div');
+                    userDiv.className = 'user-item';
+                    userDiv.innerHTML = `
+                        <span><strong>${userData.name}</strong></span>
+                        <button class="call-btn" onclick="startCall('${userData.name}', '${userData.uid}')">Call / Chat</button>
+                    `;
+                    container.appendChild(userDiv);
+                });
+            });
+        }
+
+        // ZegoCloud কল শুরু করা
+        function startCall(userName, userID) {
+            document.getElementById('contact-list-ui').style.display = 'none';
+            document.getElementById('chat-interface').style.display = 'block';
+
             const appID = 1132782578; 
             const serverSecret = "953af0a3cade62aebfc3e9ffe56b0c20";
-            const roomID = "alfaravi_main_room"; // আপনার জন্য ফিক্সড রুম
+            const roomID = "alfaravi_fixed_room"; 
 
             const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(appID, serverSecret, roomID, userID, userName);
             const zp = ZegoUIKitPrebuilt.create(kitToken);
@@ -59,7 +106,12 @@
             zp.joinRoom({
                 container: document.querySelector("#chat-interface"),
                 scenario: { mode: ZegoUIKitPrebuilt.VideoConference },
-                showScreenSharingButton: true,
+                turnOnCameraWhenJoining: false, // শুরুতে ক্যামেরা অফ
+                turnOnMicrophoneWhenJoining: false, // শুরুতে মাইক অফ
+                showMyCameraToggleButton: true,
+                showMyMicrophoneToggleButton: true,
+                showTextChat: true, // চ্যাট অপশন অন
+                showUserList: true,
             });
         }
     </script>
