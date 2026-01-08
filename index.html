@@ -1,48 +1,69 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AlFaravi - Private Chat</title>
+    <title>AlFaravi - Personal Chat</title>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
     
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; }
-        #login-ui, #contact-list-ui { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        body { font-family: 'Segoe UI', sans-serif; background: #e5ddd5; margin: 0; display: flex; height: 100vh; }
+        #login-ui { position: fixed; width: 100%; height: 100%; background: #f0f2f5; z-index: 999; display: flex; justify-content: center; align-items: center; }
+        .card { background: white; padding: 40px; border-radius: 10px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; width: 350px; }
-        .google-btn { background: #4285F4; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; width: 100%; margin-top: 20px; }
+        /* WhatsApp UI Layout */
+        .sidebar { width: 300px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 15px; background: #ededed; display: flex; justify-content: space-between; align-items: center; }
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: #e5ddd5; }
         
-        /* কন্টাক্ট লিস্ট ডিজাইন */
-        #contact-list-ui { display: none; padding: 20px; justify-content: flex-start; }
-        .user-item { background: white; padding: 15px; margin: 10px; border-radius: 10px; width: 90%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        .call-btn { background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
-        
-        #chat-interface { display: none; width: 100vw; height: 100vh; }
+        .contact-item { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; align-items: center; }
+        .contact-item:hover { background: #f5f5f5; }
+        .contact-item img { border-radius: 50%; width: 40px; margin-right: 15px; }
+
+        .messages-container { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
+        .msg { padding: 8px 15px; border-radius: 8px; margin-bottom: 5px; max-width: 70%; }
+        .sent { align-self: flex-end; background: #dcf8c6; }
+        .received { align-self: flex-start; background: white; }
+
+        .input-area { padding: 10px; background: #f0f0f0; display: flex; align-items: center; }
+        input { flex: 1; padding: 10px; border: none; border-radius: 20px; outline: none; }
+        .btn { border: none; background: #075e54; color: white; padding: 10px 15px; border-radius: 50%; cursor: pointer; margin-left: 10px; }
+        #call-btn { background: #128c7e; margin-right: 5px; }
     </style>
 </head>
 <body>
 
-    <div id="login-ui">
+    <div id="login-ui" style="display: none;">
         <div class="card">
-            <h2>AlFaravi Chat</h2>
-            <p>Connect with your friends privately</p>
-            <button class="google-btn" onclick="loginWithGoogle()">Login with Google</button>
+            <h2>WhatsApp Clone</h2>
+            <button onclick="loginWithGoogle()" style="padding:10px 20px; background:#4285F4; color:white; border:none; border-radius:5px; cursor:pointer;">Login with Google</button>
         </div>
     </div>
 
-    <div id="contact-list-ui">
-        <h2>Active Contacts</h2>
-        <div id="users-container" style="width: 100%; display: flex; flex-direction: column; align-items: center;">
-            </div>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <span id="user-name">Loading...</span>
+            <button onclick="firebase.auth().signOut()">Logout</button>
+        </div>
+        <div id="contacts-list"></div>
     </div>
 
-    <div id="chat-interface"></div>
+    <div class="chat-area">
+        <div id="chat-header" style="padding: 15px; background: #ededed; font-weight: bold; display:none;">
+            <span id="target-name">Select a contact</span>
+            <button id="call-btn" onclick="startVideoCall()" style="float:right;">📞</button>
+        </div>
+        <div class="messages-container" id="messages-list"></div>
+        <div class="input-area" id="input-container" style="display:none;">
+            <input type="text" id="msg-input" placeholder="Type a message...">
+            <button class="btn" onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+
+    <div id="zego-container" style="position:fixed; top:0; left:0; width:100vw; height:100vh; display:none; z-index:1000;"></div>
 
     <script src="https://unpkg.com/@zegocloud/zego-uikit-prebuilt/zego-uikit-prebuilt.js"></script>
-    
     <script>
-        // আপনার Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyDNPPk6UXdC-zqXCFPk8qGm92WFs9DFWC0",
             authDomain: "alfaravichatapp.firebaseapp.com",
@@ -52,66 +73,94 @@
             appId: "1:26540560340:web:44bb8b85590d36524c9041"
         };
         firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
         const db = firebase.firestore();
 
-        // গুগল লগইন
-        function loginWithGoogle() {
-            const provider = new firebase.auth.GoogleAuthProvider();
-            firebase.auth().signInWithPopup(provider).then((result) => {
-                const user = result.user;
-                
-                // Firestore এ ইউজার সেভ করা
+        let currentUser = null;
+        let activeChatID = null;
+
+        // অটো লগইন চেক
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('login-ui').style.display = 'none';
+                document.getElementById('user-name').innerText = user.displayName;
                 db.collection("users").doc(user.uid).set({
                     name: user.displayName,
-                    email: user.email,
-                    uid: user.uid
-                });
-
-                document.getElementById('login-ui').style.display = 'none';
+                    uid: user.uid,
+                    photo: user.photoURL
+                }, { merge: true });
                 loadContacts();
-            }).catch((error) => alert(error.message));
+            } else {
+                document.getElementById('login-ui').style.display = 'flex';
+            }
+        });
+
+        function loginWithGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider);
         }
 
-        // কন্টাক্ট লিস্ট লোড করা
         function loadContacts() {
-            document.getElementById('contact-list-ui').style.display = 'flex';
-            db.collection("users").onSnapshot((snapshot) => {
-                const container = document.getElementById('users-container');
-                container.innerHTML = "";
-                snapshot.forEach((doc) => {
-                    const userData = doc.data();
-                    const userDiv = document.createElement('div');
-                    userDiv.className = 'user-item';
-                    userDiv.innerHTML = `
-                        <span><strong>${userData.name}</strong></span>
-                        <button class="call-btn" onclick="startCall('${userData.name}', '${userData.uid}')">Call / Chat</button>
-                    `;
-                    container.appendChild(userDiv);
+            db.collection("users").onSnapshot(snapshot => {
+                const list = document.getElementById('contacts-list');
+                list.innerHTML = "";
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.uid === currentUser.uid) return;
+                    const div = document.createElement('div');
+                    div.className = 'contact-item';
+                    div.innerHTML = `<img src="${data.photo || 'https://via.placeholder.com/40'}"> <span>${data.name}</span>`;
+                    div.onclick = () => openChat(data);
+                    list.appendChild(div);
                 });
             });
         }
 
-        // ZegoCloud কল শুরু করা
-        function startCall(userName, userID) {
-            document.getElementById('contact-list-ui').style.display = 'none';
-            document.getElementById('chat-interface').style.display = 'block';
+        function openChat(target) {
+            activeChatID = currentUser.uid < target.uid ? currentUser.uid + target.uid : target.uid + currentUser.uid;
+            document.getElementById('chat-header').style.display = 'block';
+            document.getElementById('input-container').style.display = 'flex';
+            document.getElementById('target-name').innerText = target.name;
+            listenForMessages();
+        }
 
-            const appID = 1132782578; 
-            const serverSecret = "953af0a3cade62aebfc3e9ffe56b0c20";
-            const roomID = "alfaravi_fixed_room"; 
+        function listenForMessages() {
+            db.collection("chats").doc(activeChatID).collection("messages").orderBy("time")
+                .onSnapshot(snapshot => {
+                    const list = document.getElementById('messages-list');
+                    list.innerHTML = "";
+                    snapshot.forEach(doc => {
+                        const m = doc.data();
+                        const div = document.createElement('div');
+                        div.className = `msg ${m.sender === currentUser.uid ? 'sent' : 'received'}`;
+                        div.innerText = m.text;
+                        list.appendChild(div);
+                    });
+                    list.scrollTop = list.scrollHeight;
+                });
+        }
 
-            const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(appID, serverSecret, roomID, userID, userName);
+        function sendMessage() {
+            const text = document.getElementById('msg-input').value;
+            if (!text || !activeChatID) return;
+            db.collection("chats").doc(activeChatID).collection("messages").add({
+                text: text,
+                sender: currentUser.uid,
+                time: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            document.getElementById('msg-input').value = "";
+        }
+
+        // Zego Video Call (শুধুমাত্র বাটনে ক্লিক করলে হবে)
+        function startVideoCall() {
+            document.getElementById('zego-container').style.display = 'block';
+            const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(1132782578, "953af0a3cade62aebfc3e9ffe56b0c20", activeChatID, currentUser.uid, currentUser.displayName);
             const zp = ZegoUIKitPrebuilt.create(kitToken);
-
             zp.joinRoom({
-                container: document.querySelector("#chat-interface"),
-                scenario: { mode: ZegoUIKitPrebuilt.VideoConference },
-                turnOnCameraWhenJoining: false, // শুরুতে ক্যামেরা অফ
-                turnOnMicrophoneWhenJoining: false, // শুরুতে মাইক অফ
-                showMyCameraToggleButton: true,
-                showMyMicrophoneToggleButton: true,
-                showTextChat: true, // চ্যাট অপশন অন
-                showUserList: true,
+                container: document.querySelector("#zego-container"),
+                scenario: { mode: ZegoUIKitPrebuilt.OneONoneCall },
+                onLeaveRoom: () => document.getElementById('zego-container').style.display = 'none'
             });
         }
     </script>
